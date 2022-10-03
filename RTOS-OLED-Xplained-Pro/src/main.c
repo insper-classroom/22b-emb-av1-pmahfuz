@@ -11,6 +11,25 @@
 #define BUT_PIO_PIN 11
 #define BUT_PIO_PIN_MASK (1 << BUT_PIO_PIN)
 
+// # 1
+#define BUT_1_PIO			PIOD
+#define BUT_1_PIO_ID		ID_PIOD
+#define BUT_1_IDX		28
+#define BUT_1_IDX_MASK (1u << BUT_1_IDX)
+
+// # 2
+#define BUT_2_PIO			PIOC
+#define BUT_2_PIO_ID		ID_PIOC
+#define BUT_2_IDX		31
+#define BUT_2_IDX_MASK (1u << BUT_2_IDX)
+
+// # 3
+#define BUT_3_PIO			PIOA
+#define BUT_3_PIO_ID		ID_PIOA
+#define BUT_3_IDX		19
+#define BUT_3_IDX_MASK (1u << BUT_3_IDX)
+
+
 /** RTOS  */
 #define TASK_OLED_STACK_SIZE                (1024*6/sizeof(portSTACK_TYPE))
 #define TASK_OLED_STACK_PRIORITY            (tskIDLE_PRIORITY)
@@ -23,11 +42,20 @@ extern void xPortSysTickHandler(void);
 
 /** prototypes */
 void but_callback(void);
+void but1_callback(void);
+void but2_callback(void);
+void but3_callback(void);
 static void BUT_init(void);
+
+QueueHandle_t QueueModo;
+QueueHandle_t QueueSteps;
+SemaphoreHandle_t xSemaphoreRTT;
+
 
 /************************************************************************/
 /* RTOS application funcs                                               */
 /************************************************************************/
+
 
 extern void vApplicationStackOverflowHook(xTaskHandle *pxTask, signed char *pcTaskName) {
 	printf("stack overflow %x %s\r\n", pxTask, (portCHAR *)pcTaskName);
@@ -47,6 +75,15 @@ extern void vApplicationMallocFailedHook(void) {
 /************************************************************************/
 
 void but_callback(void) {
+}
+
+void but1_callback(void) {
+}
+
+void but2_callback(void) {
+}
+
+void but3_callback(void) {
 }
 
 /************************************************************************/
@@ -93,6 +130,34 @@ static void BUT_init(void) {
 	pio_set_debounce_filter(BUT_PIO, BUT_PIO_PIN_MASK, 60);
 	pio_enable_interrupt(BUT_PIO, BUT_PIO_PIN_MASK);
 	pio_handler_set(BUT_PIO, BUT_PIO_ID, BUT_PIO_PIN_MASK, PIO_IT_FALL_EDGE , but_callback);
+	
+	pmc_enable_periph_clk(BUT_1_PIO_ID);
+	pio_configure(BUT_1_PIO, PIO_INPUT, BUT_1_IDX_MASK, PIO_PULLUP);
+	pio_set_debounce_filter(BUT_1_PIO, BUT_1_IDX_MASK, 60);
+	pio_handler_set(BUT_1_PIO,	BUT_1_PIO_ID,	BUT_1_IDX_MASK,	PIO_IT_FALL_EDGE,	but1_callback);
+	pio_enable_interrupt(BUT_1_PIO, BUT_1_IDX_MASK);
+	pio_get_interrupt_status(BUT_1_PIO);
+	NVIC_EnableIRQ(BUT_1_PIO_ID);
+	NVIC_SetPriority(BUT_1_PIO_ID, 4);
+	
+	pmc_enable_periph_clk(BUT_2_PIO_ID);
+	pio_configure(BUT_2_PIO, PIO_INPUT, BUT_2_IDX_MASK, PIO_PULLUP);
+	pio_set_debounce_filter(BUT_2_PIO, BUT_2_IDX_MASK, 60);
+	pio_handler_set(BUT_2_PIO,	BUT_2_PIO_ID,	BUT_2_IDX_MASK,	PIO_IT_FALL_EDGE,	but2_callback);
+	pio_enable_interrupt(BUT_2_PIO, BUT_2_IDX_MASK);
+	pio_get_interrupt_status(BUT_2_PIO);
+	NVIC_EnableIRQ(BUT_2_PIO_ID);
+	NVIC_SetPriority(BUT_2_PIO_ID, 4);
+	
+	pmc_enable_periph_clk(BUT_3_PIO_ID);
+	pio_configure(BUT_3_PIO, PIO_INPUT, BUT_3_IDX_MASK, PIO_PULLUP);
+	pio_set_debounce_filter(BUT_3_PIO, BUT_3_IDX_MASK, 60);
+	pio_handler_set(BUT_3_PIO,	BUT_3_PIO_ID,	BUT_3_IDX_MASK,	PIO_IT_FALL_EDGE,	but3_callback);
+	pio_enable_interrupt(BUT_3_PIO, BUT_3_IDX_MASK);
+	pio_get_interrupt_status(BUT_3_PIO);
+	NVIC_EnableIRQ(BUT_3_PIO_ID);
+	NVIC_SetPriority(BUT_3_PIO_ID, 4);
+	
 }
 
 /************************************************************************/
@@ -109,6 +174,10 @@ int main(void) {
 	configure_console();
 
 	/* Create task to control oled */
+	xSemaphoreRTT = xSemaphoreCreateBinary();
+	if (xSemaphoreRTT == NULL){
+		printf("falha em criar o semaforo \n");
+	}
 	if (xTaskCreate(task_oled, "oled", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
 	  printf("Failed to create oled task\r\n");
 	}
