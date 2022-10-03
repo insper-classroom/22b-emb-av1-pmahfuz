@@ -78,26 +78,77 @@ void but_callback(void) {
 }
 
 void but1_callback(void) {
+	char a = 180;
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	// libera semáforo
+	xQueueSendFromISR(QueueModo, &a, &xHigherPriorityTaskWoken);
 }
 
 void but2_callback(void) {
+	char b = 90;
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	// libera semáforo
+	xQueueSendFromISR(QueueModo, &b, &xHigherPriorityTaskWoken);
 }
 
 void but3_callback(void) {
+	char c = 45;
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	// libera semáforo
+	xQueueSendFromISR(QueueModo, &c, &xHigherPriorityTaskWoken);
 }
 
 /************************************************************************/
 /* TASKS                                                                */
 /************************************************************************/
 
-static void task_oled(void *pvParameters) {
-	gfx_mono_ssd1306_init();
-  gfx_mono_draw_string("Exemplo RTOS", 0, 0, &sysfont);
-  gfx_mono_draw_string("oii", 0, 20, &sysfont);
 
-	for (;;)  {
-    
 
+
+static void task_modo(void *pvParameters){
+	
+	/* iniciliza botao */
+	BUT_init();
+	char passos;
+	char id;
+	
+	for (;;) {
+		if(xQueueReceive (QueueModo, &id, (TickType_t) 500 )){
+			
+			char consta; 
+			consta = 0.17578125;
+			passos = id/consta;
+			
+			if(id == 180){
+				gfx_mono_ssd1306_init();
+				gfx_mono_draw_string("180 graus" , 0, 0, &sysfont);
+			} else if (id == 90){
+				gfx_mono_ssd1306_init();
+				gfx_mono_draw_string("90 graus " , 0, 0, &sysfont);
+			} else if (id == 45){
+			gfx_mono_ssd1306_init();
+			gfx_mono_draw_string("45 graus " , 0, 0, &sysfont);
+			}
+		}
+		
+		/* envia nova frequencia para a task_led */
+		xQueueSend(QueueSteps, &passos, 10);
+		
+		printf("passos: %d \n", passos);
+		
+	}
+}
+
+static void task_motor(void *pvParameters){
+	
+	char passos;
+	for (;;) {
+		if(xQueueReceive(QueueSteps,  &passos, (TickType_t) 500)){
+			for(int i; i <= passos; i+=4){
+				
+			}
+		}
+	
 	}
 }
 
@@ -178,8 +229,21 @@ int main(void) {
 	if (xSemaphoreRTT == NULL){
 		printf("falha em criar o semaforo \n");
 	}
-	if (xTaskCreate(task_oled, "oled", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
-	  printf("Failed to create oled task\r\n");
+	
+	QueueModo = xQueueCreate(32, sizeof(char));
+	QueueSteps = xQueueCreate(32, sizeof(char));
+	
+	if (QueueModo == NULL)
+	printf("falha em criar a queue \n");
+	if (QueueSteps == NULL)
+	printf("falha em criar a queue \n");
+	
+	if (xTaskCreate(task_modo, "modo", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create modo task\r\n");
+	}
+	
+	if (xTaskCreate(task_motor, "motor", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
+	  printf("Failed to create motor task\r\n");
 	}
 
 	/* Start the scheduler. */
