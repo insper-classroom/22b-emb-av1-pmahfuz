@@ -71,6 +71,7 @@ void but2_callback(void);
 void but3_callback(void);
 static void BUT_init(void);
 void pio_inits(void);
+static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource);
 
 QueueHandle_t QueueModo;
 QueueHandle_t QueueSteps;
@@ -112,19 +113,28 @@ void but1_callback(void) {
 void but2_callback(void) {
 	char b = 90;
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	// libera semáforo
 	xQueueSendFromISR(QueueModo, &b, &xHigherPriorityTaskWoken);
 }
 
 void but3_callback(void) {
 	char c = 45;
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	// libera semáforo
 	xQueueSendFromISR(QueueModo, &c, &xHigherPriorityTaskWoken);
 }
 
-// static uint32_t get_time_rtt() {
-// 	return rtt_read_timer_value(RTT);
-// }
+int flag_rtt = 0;
 
+void RTT_Handler(void) {
+	uint32_t ul_status;
+	ul_status = rtt_get_status(RTT);
+
+	/* IRQ due to Alarm */
+	if ((ul_status & RTT_SR_ALMS) == RTT_SR_ALMS) {
+		xSemaphoreGiveFromISR(xSemaphoreRTT,0);
+	}
+}
 
 /************************************************************************/
 /* TASKS                                                                */
@@ -168,32 +178,44 @@ static void task_modo(void *pvParameters){
 }
 
 static void task_motor(void *pvParameters){
-	
+	int rodador = 0;
 	pio_inits();
 	char passos;
 	for (;;) {
 		if(xQueueReceive(QueueSteps,  &passos, (TickType_t) 500)){
-			for(int i = 0; i < passos; i+=4){
-				pio_set(PIO_1, PIO_1_IDX_MASK);
-				pio_clear(PIO_2, PIO_2_IDX_MASK);
-				pio_clear(PIO_3, PIO_3_IDX_MASK);	
-				pio_clear(PIO_4, PIO_4_IDX_MASK);
-				delay_ms(500);
-				pio_clear(PIO_1, PIO_1_IDX_MASK);
-				pio_set(PIO_2, PIO_2_IDX_MASK);
-				pio_clear(PIO_3, PIO_3_IDX_MASK);
-				pio_clear(PIO_4, PIO_4_IDX_MASK);
-				delay_ms(500);
-				pio_clear(PIO_1, PIO_1_IDX_MASK);
-				pio_clear(PIO_2, PIO_2_IDX_MASK);
-				pio_set(PIO_3, PIO_3_IDX_MASK);
-				pio_clear(PIO_4, PIO_4_IDX_MASK);
-				delay_ms(500);
-				pio_clear(PIO_1, PIO_1_IDX_MASK);
-				pio_clear(PIO_2, PIO_2_IDX_MASK);
-				pio_clear(PIO_3, PIO_3_IDX_MASK);
-				pio_set(PIO_4, PIO_4_IDX_MASK);	
-				delay_ms(500);
+				
+				for(int i = 0; i < passos; i+=1){
+					RTT_init(1000,5,RTT_MR_ALMIEN);
+					if (xSemaphoreTake(xSemaphoreRTT, 1000)){
+						rodador += 1;
+						if(rodador > 4){
+							rodador = 1;
+						}
+						if (rodador == 1){
+						pio_set(PIO_1, PIO_1_IDX_MASK);
+						pio_clear(PIO_2, PIO_2_IDX_MASK);
+						pio_clear(PIO_3, PIO_3_IDX_MASK);
+						pio_clear(PIO_4, PIO_4_IDX_MASK);
+						}
+						else if (rodador == 2){
+						pio_clear(PIO_1, PIO_1_IDX_MASK);
+						pio_set(PIO_2, PIO_2_IDX_MASK);
+						pio_clear(PIO_3, PIO_3_IDX_MASK);
+						pio_clear(PIO_4, PIO_4_IDX_MASK);
+						}
+						else if(rodador == 3){
+						pio_clear(PIO_1, PIO_1_IDX_MASK);
+						pio_clear(PIO_2, PIO_2_IDX_MASK);
+						pio_set(PIO_3, PIO_3_IDX_MASK);
+						pio_clear(PIO_4, PIO_4_IDX_MASK);
+						}
+						else if(rodador == 4){
+						pio_clear(PIO_1, PIO_1_IDX_MASK);
+						pio_clear(PIO_2, PIO_2_IDX_MASK);
+						pio_clear(PIO_3, PIO_3_IDX_MASK);
+						pio_set(PIO_4, PIO_4_IDX_MASK);
+						}
+				}
 			}
 		}
 	
@@ -276,33 +298,34 @@ void pio_inits(void){
 	
 }
 
-// void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource) {
-// 
-// 	uint16_t pllPreScale = (int) (((float) 32768) / freqPrescale);
-// 	
-// 	rtt_sel_source(RTT, false);
-// 	rtt_init(RTT, pllPreScale);
-// 	
-// 	if (rttIRQSource & RTT_MR_ALMIEN) {
-// 		uint32_t ul_previous_time;
-// 		ul_previous_time = rtt_read_timer_value(RTT);
-// 		while (ul_previous_time == rtt_read_timer_value(RTT));
-// 		rtt_write_alarm_time(RTT, IrqNPulses+ul_previous_time);
-// 	}
-// 
-// 	/* config NVIC */
-// 	NVIC_DisableIRQ(RTT_IRQn);
-// 	NVIC_ClearPendingIRQ(RTT_IRQn);
-// 	NVIC_SetPriority(RTT_IRQn, 4);
-// 	NVIC_EnableIRQ(RTT_IRQn);
-// 
-// 	/* Enable RTT interrupt */
-// 	if (rttIRQSource & (RTT_MR_RTTINCIEN | RTT_MR_ALMIEN))
-// 	rtt_enable_interrupt(RTT, rttIRQSource);
-// 	else
-// 	rtt_disable_interrupt(RTT, RTT_MR_RTTINCIEN | RTT_MR_ALMIEN);
-// 	
-// }
+static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource) {
+
+	uint16_t pllPreScale = (int) (((float) 32768) / freqPrescale);
+	
+	rtt_sel_source(RTT, false);
+	rtt_init(RTT, pllPreScale);
+	
+	if (rttIRQSource & RTT_MR_ALMIEN) {
+		uint32_t ul_previous_time;
+		ul_previous_time = rtt_read_timer_value(RTT);
+		while (ul_previous_time == rtt_read_timer_value(RTT));
+		rtt_write_alarm_time(RTT, IrqNPulses+ul_previous_time);
+	}
+
+	/* config NVIC */
+	NVIC_DisableIRQ(RTT_IRQn);
+	NVIC_ClearPendingIRQ(RTT_IRQn);
+	NVIC_SetPriority(RTT_IRQn, 4);
+	NVIC_EnableIRQ(RTT_IRQn);
+
+	/* Enable RTT interrupt */
+	if (rttIRQSource & (RTT_MR_RTTINCIEN | RTT_MR_ALMIEN))
+	rtt_enable_interrupt(RTT, rttIRQSource);
+	else
+	rtt_disable_interrupt(RTT, RTT_MR_RTTINCIEN | RTT_MR_ALMIEN);
+	
+}
+
 
 /************************************************************************/
 /* main                                                                 */
